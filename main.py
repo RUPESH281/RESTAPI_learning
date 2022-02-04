@@ -1,38 +1,48 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, make_response
+import jwt 
+import datetime
+from functools import wraps
+
 app = Flask(__name__)
 
-@app.route('/')
-def hello_world():
-    return "Welcome"
+app.config['SECRET_KEY'] = 'thisisthesecretkey'
 
-@app.route('/armstrong/<int:n>')
-def armstrong(n):
-    sum=0
-    order=len(str(n))
-    copy_n=n
-    while(n>0):
-        digit=n%10
-        sum+=digit **order
-        n=n//10
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.args.get('token')
 
-    if(sum == copy_n):
-        print(f"{copy_n} is an armstrong number")
-        result={
-            "Number": copy_n,
-            "Armstrong": True
-        }
+        if not token:
+            return jsonify({'message' : 'Token is missing!'}), 403
 
-    else:
-        print(f"{copy_n} is an armstrong number")
-        result={
-            "Number": copy_n,
-            "Armstrong": False
-        }
+        try: 
+            data = jwt.decode(token, app.config['SECRET_KEY'])
+        except:
+            return jsonify({'message' : 'Token is invalid!'}), 403
 
-    return jsonify(result)
+        return f(*args, **kwargs)
 
-if __name__ =="__main__":
+    return decorated
+
+@app.route('/unprotected')
+def unprotected():
+    return jsonify({'message' : 'Anyone can view this!'})
+
+@app.route('/protected')
+@token_required
+def protected():
+    return jsonify({'message' : 'This is only available for people with valid tokens.'})
+
+@app.route('/login')
+def login():
+    auth = request.authorization
+
+    if auth and auth.password == 'secret':
+        token = jwt.encode({'user' : auth.username, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(seconds=15)}, app.config['SECRET_KEY'])
+
+        return jsonify({'token' : token.decode('UTF-8')})
+
+    return make_response('Could not verify!', 401, {'WWW-Authenticate' : 'Basic realm="Login Required"'})
+
+if __name__ == '__main__':
     app.run(debug=True)
-
-
-
